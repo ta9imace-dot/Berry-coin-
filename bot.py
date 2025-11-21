@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 from discord import ui
 import sqlite3
+import asyncio
 
 # ---------- CONFIG ----------
 TOKEN = os.getenv("TOKEN")
@@ -69,6 +70,11 @@ guild_invites = {}
 @bot.event
 async def on_ready():
     print("Bot is ready.")
+
+    # ====== حل مشكلة توقف الازرار بعد Restart ======
+    bot.add_view(MainView())
+    # ===============================================
+
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
@@ -95,7 +101,6 @@ async def on_member_join(member):
     if not used_code:
         return
 
-    # منع تكرار المكافأة
     cur.execute("SELECT 1 FROM used_invites WHERE user_id=?", (str(member.id),))
     if cur.fetchone():
         return
@@ -112,7 +117,6 @@ async def on_member_join(member):
     if inviter:
         add_balance(str(inviter.id), 1)
 
-        # رسالة خاصة
         try:
             await inviter.send(
                 f"🎉 شخص دخل من رابطك!\n"
@@ -158,7 +162,6 @@ class TransferModal(ui.Modal, title="Transfer"):
         if get_balance(str(self.author_id)) < amount:
             return await interaction.response.send_message("❌ Not enough balance.", ephemeral=True)
 
-        # confirmation
         view = ui.View()
 
         async def confirm(i):
@@ -300,5 +303,14 @@ async def setlog(ctx, channel: discord.TextChannel):
     await ctx.send(f"✅ Log channel set to {channel.mention}")
 
 
-# ---------- RUN ----------
-bot.run(TOKEN)
+# ---------- AUTO RESTART RUN ----------
+async def start_bot():
+    while True:
+        try:
+            print("Starting bot...")
+            await bot.start(TOKEN)
+        except Exception as e:
+            print(f"Bot crashed! Restarting... Error: {e}")
+            await asyncio.sleep(3)
+
+asyncio.run(start_bot())

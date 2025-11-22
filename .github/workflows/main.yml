@@ -20,9 +20,10 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -U discord.py
+        pip install python-dotenv
 
     - name: Run bot
       env:
-        TOKEN: ${{ secrets.TOKEN }}
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       run: |
         python bot.py

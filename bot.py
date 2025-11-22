@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
+OWNER_ID = 1268438720227311661
 
 DATA_FILE = "points.json"
 

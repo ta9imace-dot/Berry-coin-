@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import json
 import os
+from discord.ui import View, Button
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,12 +12,16 @@ OWNER_ID = 1268438720227311661
 
 DATA_FILE = "points.json"
 
-# IDs ثابتة
+# ثابتة
 THANKS_CHANNEL_ID = 1441500844875976865
 LEADERBOARD_CHANNEL_ID = 1441532488097992736
+LEADERBOARD_MESSAGE_ID = 1441800143396536410  # الرسالة الثابتة
 
 
-# إنشاء ملف البيانات لو غير موجود
+# ───────────────────────────────
+#   ملفات البيانات
+# ───────────────────────────────
+
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump({}, f, ensure_ascii=False, indent=4)
@@ -32,11 +37,18 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
+# ───────────────────────────────
+#   إعداد البوت
+# ───────────────────────────────
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=["+", "!"], intents=intents)
 
 
-# تحويل 5k → 5000 ، 3m → 3000000
+# ───────────────────────────────
+#   تنسيقات الأرقام
+# ───────────────────────────────
+
 def parse_amount(txt):
     txt = txt.lower()
     if txt.endswith("k"):
@@ -48,7 +60,6 @@ def parse_amount(txt):
     return int(txt)
 
 
-# اختصار الأرقام
 def format_number(num):
     if num >= 1_000_000_000:
         return f"{num/1_000_000_000:.1f}b"
@@ -59,49 +70,78 @@ def format_number(num):
     return str(num)
 
 
+# ───────────────────────────────
+#   View للصفحات
+# ───────────────────────────────
+
+class LeaderboardView(View):
+    def __init__(self, sorted_users, page=1):
+        super().__init__(timeout=None)
+        self.sorted_users = sorted_users
+        self.page = page
+
+    def get_max_pages(self):
+        return max(1, (len(self.sorted_users) + 9) // 10)
+
+    def make_embed(self):
+        start = (self.page - 1) * 10
+        end = start + 10
+        page_users = self.sorted_users[start:end]
+
+        desc = ""
+        rank = start + 1
+
+        for uid, pts in page_users:
+            desc += f"{rank}- <@{uid}> — {format_number(pts)}\n"
+            rank += 1
+
+        if desc == "":
+            desc = "No supporters yet."
+
+        embed = discord.Embed(
+            title="🤍 Top Supporters",
+            description=desc,
+            color=discord.Color.from_rgb(255, 255, 255)
+        )
+        embed.set_footer(text=f"Page {self.page}/{self.get_max_pages()}")
+        return embed
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    async def prev(self, interaction: discord.Interaction, button: Button):
+        if self.page > 1:
+            self.page -= 1
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: Button):
+        if self.page < self.get_max_pages():
+            self.page += 1
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+
+# ───────────────────────────────
+#   تحديث لوحة المتصدرين
+# ───────────────────────────────
+
 async def update_leaderboard(guild):
     data = load_data()
 
     channel = guild.get_channel(LEADERBOARD_CHANNEL_ID)
+    msg = await channel.fetch_message(LEADERBOARD_MESSAGE_ID)
 
-    # لو ما فيه رسالة قديمة، يسوي وحدة جديدة
-    if "leaderboard_message_id" not in data:
-        embed = discord.Embed(
-            title="🤍 Top Supporters",
-            description="No supporters yet.",
-            color=discord.Color.from_rgb(255, 255, 255)
-        )
-        msg = await channel.send(embed=embed)
-        data["leaderboard_message_id"] = msg.id
-        save_data(data)
-        return
-
-    msg_id = data["leaderboard_message_id"]
-    msg = await channel.fetch_message(msg_id)
-
-    # ترتيب
     scores = {k: int(v) for k, v in data.items() if k.isdigit()}
     sorted_users = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
-    desc = ""
-    rank = 1
-    for uid, pts in sorted_users[:10]:
-        desc += f"{rank}- <@{uid}> — {format_number(pts)}\n"
-        rank += 1
+    view = LeaderboardView(sorted_users, page=1)
+    embed = view.make_embed()
 
-    if desc == "":
-        desc = "No supporters yet."
-
-    embed = discord.Embed(
-        title="🤍 Top Supporters",
-        description=desc,
-        color=discord.Color.from_rgb(255, 255, 255)
-    )
-
-    await msg.edit(embed=embed)
+    await msg.edit(embed=embed, view=view)
 
 
-# رسالة شكر تلقائية
+# ───────────────────────────────
+#   رسالة شكر تلقائية
+# ───────────────────────────────
+
 async def send_thanks(ctx, member, amount):
     channel = ctx.guild.get_channel(THANKS_CHANNEL_ID)
 
@@ -117,9 +157,9 @@ async def send_thanks(ctx, member, amount):
     await channel.send(embed=embed)
 
 
-# ────────────────
-#    أوامر الأونر
-# ────────────────
+# ───────────────────────────────
+#   أوامر الأونر
+# ───────────────────────────────
 
 @bot.command()
 async def give(ctx, member: discord.Member, amount):
@@ -134,10 +174,7 @@ async def give(ctx, member: discord.Member, amount):
     data[uid] = data.get(uid, 0) + amount
     save_data(data)
 
-    # رسالة شكر
     await send_thanks(ctx, member, amount)
-
-    # تحديث لوحة المتصدرين
     await update_leaderboard(ctx.guild)
 
     await ctx.send(f"✔ تمت إضافة **{format_number(amount)}** إلى {member.mention}.")
@@ -168,5 +205,7 @@ async def refresh(ctx):
     await update_leaderboard(ctx.guild)
     await ctx.send("🔄 تم تحديث لوحة المتصدرين بنجاح.")
 
+
+# ───────────────────────────────
 
 bot.run(TOKEN)

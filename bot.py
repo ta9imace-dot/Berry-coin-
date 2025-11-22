@@ -23,8 +23,7 @@ LEADERBOARD_MESSAGE_ID = 1441800143396536410  # الرسالة الثابتة
 # ───────────────────────────────
 
 if not os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "w", encoding="utf8") as f:
-        json.dump({}, f, ensure_ascii=False, indent=4)
+    open(DATA_FILE, "w").write("{}")
 
 
 def load_data():
